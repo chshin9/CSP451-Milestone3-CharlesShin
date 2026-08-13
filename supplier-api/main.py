@@ -17,6 +17,16 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+import logging as _stdlib_logging
+import sys as _stdlib_sys
+
+_stdlib_logging.basicConfig(
+    format="%(message)s",
+    stream=_stdlib_sys.stdout,
+    level=_stdlib_logging.INFO,
+    force=True,
+)
+
 # Configure structured logging
 structlog.configure(
     processors=[

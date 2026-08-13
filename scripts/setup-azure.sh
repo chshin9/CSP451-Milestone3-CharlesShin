@@ -18,7 +18,7 @@ if [ -z "${RESOURCE_GROUP:-}" ]; then
     RESOURCE_GROUP="$(az group list --query "[?starts_with(name,'Student-RG-')].name | [0]" -o tsv 2>/dev/null)"
 fi
 : "${RESOURCE_GROUP:?Set RESOURCE_GROUP=Student-RG-<your-ODL-id> before running this script}"
-LOCATION="canadacentral"
+LOCATION="canadaeast"
 
 # --- Milestone 1 / Milestone 2 continuation ---
 # M3 does NOT create a fresh network. It reuses the ShopStream-VNet you created in
@@ -39,7 +39,7 @@ VM_NAME="shopstream-supplier-vm"
 VM_DNS_LABEL="shopstream-supplier-vm-${UNIQ}"        # globally-unique DNS label
 VM_SIZE="Standard_B2s"
 VM_USER="azureuser"
-MYIP="$(curl -s https://ifconfig.me)/32"   # restrict SSH to your current IP (M1/CK4 pattern)
+MYIP="173.34.158.146"   # restrict SSH to your current IP (M1/CK4 pattern)
 
 echo "🚀 Setting up ShopStream Supplier Sync in Azure..."
 echo "Resource Group: $RESOURCE_GROUP"
@@ -95,15 +95,15 @@ az storage queue create \
     --name "inventory-events" \
     --connection-string "$STORAGE_CONNECTION_STRING"
 
-# Create Function App
+# Create Function App on Flex Consumption. Legacy Linux Consumption is not
+# available in some subscriptions/resource groups and is being retired.
 echo "⚡ Creating Azure Function App..."
 az functionapp create \
     --resource-group $RESOURCE_GROUP \
-    --consumption-plan-location $LOCATION \
+    --flexconsumption-location $LOCATION \
     --runtime python \
     --runtime-version 3.11 \
     --functions-version 4 \
-    --os-type Linux \
     --name $FUNCTION_APP \
     --storage-account $STORAGE_ACCOUNT
 
@@ -237,22 +237,46 @@ WORKSPACE_KEY=$(az monitor log-analytics workspace get-shared-keys \
 # Create Application Insights
 echo "📈 Creating Application Insights..."
 APP_INSIGHTS="shopstream-supplier-insights"
-az extension add --name application-insights
-az monitor app-insights component create \
-    --app $APP_INSIGHTS \
-    --location $LOCATION \
-    --resource-group $RESOURCE_GROUP \
-    --workspace $WORKSPACE_ID
+
+# Use the generic ARM resource command instead of the optional
+# application-insights CLI extension. This is more reliable when the extension
+# is unavailable or its preview API is disabled.
+if az resource show \
+    --resource-group "$RESOURCE_GROUP" \
+    --resource-type "Microsoft.Insights/components" \
+    --name "$APP_INSIGHTS" \
+    -o none 2>/dev/null; then
+    echo "   Application Insights already exists; reusing it."
+else
+    az resource create \
+        --resource-group "$RESOURCE_GROUP" \
+        --resource-type "Microsoft.Insights/components" \
+        --name "$APP_INSIGHTS" \
+        --is-full-object \
+        --properties "{\"location\":\"$LOCATION\",\"kind\":\"web\",\"properties\":{\"Application_Type\":\"web\",\"WorkspaceResourceId\":\"$WORKSPACE_ID\"}}" \
+        -o none
+fi
 
 # Link the Function App to Application Insights so its structured logs and
 # correlation IDs flow into Log Analytics for the Task 4 end-to-end trace.
-AI_CONNECTION_STRING=$(az monitor app-insights component show \
-    --app $APP_INSIGHTS \
-    --resource-group $RESOURCE_GROUP \
-    --query connectionString --output tsv)
+# Read the connection string through ARM so this step does not depend on the
+# application-insights CLI extension either.
+AI_CONNECTION_STRING=$(az resource show \
+    --resource-group "$RESOURCE_GROUP" \
+    --resource-type "Microsoft.Insights/components" \
+    --name "$APP_INSIGHTS" \
+    --query "properties.ConnectionString" \
+    --output tsv)
+
+if [ -z "$AI_CONNECTION_STRING" ]; then
+    echo "❌ Application Insights was found, but no connection string was returned."
+    echo "   Open $APP_INSIGHTS in the Azure Portal and copy its Connection String."
+    exit 1
+fi
+
 az functionapp config appsettings set \
-    --name $FUNCTION_APP \
-    --resource-group $RESOURCE_GROUP \
+    --name "$FUNCTION_APP" \
+    --resource-group "$RESOURCE_GROUP" \
     --settings "APPLICATIONINSIGHTS_CONNECTION_STRING=$AI_CONNECTION_STRING"
 
 # Get VM public IP
