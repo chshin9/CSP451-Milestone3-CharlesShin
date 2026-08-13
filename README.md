@@ -257,3 +257,19 @@ At-Least-Once Delivery and Duplicate-Order Risk
 Azure Storage Queue follows an at-least-once delivery model. This is useful because it reduces the chance of losing a low-stock event: if the Azure Function fails while processing a message, the message can become visible again and be retried. However, this also creates a duplicate-processing risk. For example, the Function could successfully call POST /order on the Supplier API, then crash before the queue message is fully completed. When the message is delivered again, the Function may create a second supplier order for the same low-stock event.
 
 The correct production mitigation is idempotency. Each inventory event already has an event_id, so the Function should check a durable deduplication store before creating a supplier order. A production design could store processed event_id values in Cosmos DB or Redis with a TTL. If the same event_id appears again, the Function should log it as a duplicate, skip the supplier order side effect, and allow the queue message to complete.
+
+Tools Used
+
+The following tools were used to complete and document this project:
+
+Generative AI: Used to help explain project requirements, draft README/reflection wording, and troubleshoot commands. Final implementation choices, screenshots, command outputs, and submitted evidence were verified by me.
+Azure Portal: Used to inspect Azure resources, Storage Queue messages, Function executions, Application Insights, Log Analytics, NSG rules, and VNet Flow Logs.
+Azure CLI: Used to provision resources, query resource state, configure storage/function settings, inspect NSG rules, and retrieve Log Analytics results.
+Docker Desktop: Used to build and run the local Docker Compose stack containing the backend, supplier API, Azurite, and supporting services.
+Docker Compose: Used to orchestrate the backend and supplier API containers locally and on the Supplier VM.
+Git Bash: Used as the main terminal environment for Bash commands, Azure CLI commands, Docker commands, SSH, SCP, and scripts.
+Azure Functions Core Tools v4: Used to test and publish the Python v2 Azure Function.
+Azurite: Used as the local Azure Storage Queue emulator for local development and testing.
+jq: Used to format and inspect JSON command output.
+SSH/SCP: Used to connect to the Azure VM, inspect container logs, and deploy files.
+Git: Used to manage the local project repository and tag the final commit.
