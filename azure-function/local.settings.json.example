@@ -1,0 +1,10 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "DefaultEndpointsProtocol=https;AccountName=your_storage_account;AccountKey=your_key;EndpointSuffix=core.windows.net",
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "SUPPLIER_API_URL": "http://localhost:8001",
+    "RETRY_ATTEMPTS": "3",
+    "TIMEOUT_SECONDS": "30"
+  }
+}

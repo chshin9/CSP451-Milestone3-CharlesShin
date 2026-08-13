@@ -1,0 +1,93 @@
+services:
+  # ShopStream Supplier Backend Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING}
+      - STOCK_THRESHOLD=10
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./backend:/app
+      - backend_logs:/app/logs
+    networks:
+      - shopstream-supplier-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Supplier API Microservice
+  supplier-api:
+    build:
+      context: ./supplier-api
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - SUPPLIER_ID=ACME-SUPPLIER-001
+      - PROCESSING_TIME_SECONDS=2
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./supplier-api:/app
+      - supplier_logs:/app/logs
+    networks:
+      - shopstream-supplier-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Azure Storage Emulator (Azurite)
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    command: "azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --loose --skipApiVersionCheck"
+    ports:
+      - "10000:10000"  # Blob service
+      - "10001:10001"  # Queue service
+      - "10002:10002"  # Table service
+    volumes:
+      - azurite_data:/data
+    networks:
+      - shopstream-supplier-network
+    restart: unless-stopped
+
+  # Web UI for monitoring (optional). On first run, open https://localhost:9443
+  # and set the admin password through the UI (the previous --admin-password-file
+  # flag pointed at an empty named volume and prevented startup).
+  portainer:
+    image: portainer/portainer-ce:latest
+    ports:
+      - "9443:9443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    networks:
+      - shopstream-supplier-network
+    restart: unless-stopped
+
+volumes:
+  backend_logs:
+    driver: local
+  supplier_logs:
+    driver: local
+  azurite_data:
+    driver: local
+  portainer_data:
+    driver: local
+
+networks:
+  shopstream-supplier-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
